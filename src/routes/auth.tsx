@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { sendSignupCode } from "@/lib/signup-code.functions";
 import { SELF_SERVICE_ACCOUNT_TYPES, accountTypeLabels, homeAfterSignIn, safeRedirect, type AccountType } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 
@@ -60,6 +61,8 @@ function AuthPage() {
   const [busy, setBusy] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
   const [sentTo, setSentTo] = useState<string | null>(null);
+  const [code, setCode] = useState("");
+  const [otpType, setOtpType] = useState<"signup" | "email">("signup");
 
   useEffect(() => {
     const query = new URLSearchParams(window.location.search);
@@ -87,7 +90,14 @@ function AuthPage() {
     return () => { cancelled = true; };
   }, [user, loading, dest, navigate]);
 
-  const setMode = (m: Mode) => { setErrors({}); setSentTo(null); navigate({ to: "/auth", search: { ...search, mode: m }, replace: true }); };
+  const setMode = (m: Mode) => { setErrors({}); setSentTo(null); setCode(""); navigate({ to: "/auth", search: { ...search, mode: m }, replace: true }); };
+
+  const requestCode = async (details: { fullName: string; email: string; password: string }) => {
+    const result = await sendSignupCode({ data: { ...details, accountType } });
+    setOtpType(result.otpType);
+    setSentTo(details.email);
+    setCode("");
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -97,12 +107,11 @@ function AuthPage() {
       if (mode === "signup") {
         const r = signUpSchema.safeParse({ fullName, email, password });
         if (!r.success) return setErrors(Object.fromEntries(r.error.issues.map((i) => [String(i.path[0]), i.message])));
-        const { error } = await supabase.auth.signUp({
-          email: r.data.email, password: r.data.password,
-          options: { emailRedirectTo: window.location.origin + "/dashboard", data: { full_name: r.data.fullName, account_type: accountType } },
-        });
-        if (error) return toast.error(error.message);
-        setSentTo(r.data.email);
+        try {
+          await requestCode(r.data);
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : "We couldn't send the code. Please try again.");
+        }
       } else if (mode === "signin") {
         const r = signInSchema.safeParse({ email, password });
         if (!r.success) return setErrors(Object.fromEntries(r.error.issues.map((i) => [String(i.path[0]), i.message])));
@@ -168,9 +177,29 @@ function AuthPage() {
       <div className="rounded-lg border border-border bg-surface p-8 shadow-soft">
         <h2 className="text-2xl font-bold text-primary">{title}</h2>
 
-        {sentTo ? (
+        {sentTo && mode === "signup" ? (
+          <form className="mt-6 space-y-4" onSubmit={async (e) => {
+            e.preventDefault();
+            const token = code.trim();
+            if (!/^\d{6}$/.test(token)) return setErrors({ code: "Enter the 6-digit code from your email" });
+            setBusy(true);
+            const { error } = await supabase.auth.verifyOtp({ email: sentTo, token, type: otpType });
+            setBusy(false);
+            if (error) toast.error("That code is not correct. Check the email and try again.");
+          }}>
+            <p className="text-sm">We sent a 6-digit code to <strong>{sentTo}</strong>. Enter it here to finish creating your account.</p>
+            <Field id="code" label="6-digit code" value={code} onChange={(v) => setCode(v.replace(/\D/g, "").slice(0, 6))} error={errors["code"]} autoComplete="one-time-code" inputMode="numeric" />
+            <Button type="submit" className="w-full" size="lg" disabled={busy}>{busy ? "Please wait…" : "Continue"}</Button>
+            <button type="button" className="text-sm text-primary hover:underline" disabled={busy} onClick={async () => {
+              setBusy(true);
+              try { await requestCode({ fullName, email: sentTo, password }); toast.success("A new code is on its way."); }
+              catch (err) { toast.error(err instanceof Error ? err.message : "We couldn't send a new code."); }
+              finally { setBusy(false); }
+            }}>Send a new code</button>
+          </form>
+        ) : sentTo ? (
           <div className="mt-6 space-y-4 text-sm">
-            <p>We've sent an email to <strong>{sentTo}</strong>. {mode === "signup" ? "Open the link to confirm your account, then sign in." : "Open the link to choose a new password."}</p>
+            <p>We've sent an email to <strong>{sentTo}</strong>. Open the link to choose a new password.</p>
             <Button variant="outline" onClick={() => setMode("signin")}>Back to sign in</Button>
           </div>
         ) : (
@@ -216,11 +245,11 @@ function AuthPage() {
   );
 }
 
-function Field({ id, label, value, onChange, error, type = "text", autoComplete }: { id: string; label: string; value: string; onChange: (v: string) => void; error: string | undefined; type?: string; autoComplete?: string }) {
+function Field({ id, label, value, onChange, error, type = "text", autoComplete, inputMode }: { id: string; label: string; value: string; onChange: (v: string) => void; error: string | undefined; type?: string; autoComplete?: string; inputMode?: "numeric" | "email" | "text" }) {
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
-      <Input id={id} type={type} value={value} onChange={(e) => onChange(e.target.value)} autoComplete={autoComplete} aria-invalid={!!error} />
+      <Input id={id} type={type} value={value} onChange={(e) => onChange(e.target.value)} autoComplete={autoComplete} inputMode={inputMode} aria-invalid={!!error} />
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
