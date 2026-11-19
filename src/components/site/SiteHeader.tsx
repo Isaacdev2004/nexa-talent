@@ -11,7 +11,7 @@ import { primaryNav } from "./nav";
 export function SiteHeader() {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   useEffect(() => {
     const on = () => setScrolled(window.scrollY > 8);
     on();
@@ -32,7 +32,10 @@ export function SiteHeader() {
         </nav>
         <div className="hidden items-center gap-2 lg:flex">
           {user ? (
-            <Button asChild size="sm"><Link to="/dashboard">My dashboard</Link></Button>
+            <>
+              <Button asChild size="sm" variant="outline"><Link to="/dashboard">My dashboard</Link></Button>
+              <Button size="sm" onClick={() => void signOut()}>Sign out</Button>
+            </>
           ) : (
             <>
               <Button asChild variant="ghost" size="sm"><Link to="/auth">Sign In</Link></Button>
@@ -53,7 +56,10 @@ export function SiteHeader() {
             </div>
             <div className="mt-8 flex flex-col gap-3">
               {user ? (
-                <Button asChild className="bg-accent text-accent-foreground hover:bg-accent/90"><Link to="/dashboard" onClick={() => setOpen(false)}>My dashboard</Link></Button>
+                <>
+                  <Button asChild className="bg-accent text-accent-foreground hover:bg-accent/90"><Link to="/dashboard" onClick={() => setOpen(false)}>My dashboard</Link></Button>
+                  <Button variant="outline" className="border-primary-foreground/30 bg-transparent text-primary-foreground" onClick={() => { setOpen(false); void signOut(); }}>Sign out</Button>
+                </>
               ) : (
                 <>
                   <Button asChild variant="outline" className="border-primary-foreground/30 bg-transparent text-primary-foreground"><Link to="/auth" onClick={() => setOpen(false)}>Sign In</Link></Button>

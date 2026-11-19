@@ -1,5 +1,7 @@
 import { createFileRoute, Link, Outlet, redirect } from "@tanstack/react-router";
-import { Briefcase, ClipboardList, Inbox, LayoutDashboard, Megaphone, Send, Users, Wallet } from "lucide-react";
+import { Briefcase, ClipboardList, Inbox, LayoutDashboard, LogOut, Megaphone, Send, Users, Wallet } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/staff")({
@@ -29,6 +31,7 @@ const nav = [
 ] as const;
 
 function StaffLayout() {
+  const { signOut } = useAuth();
   return (
     <div className="container-site grid gap-8 py-10 lg:grid-cols-[13rem_1fr]">
       <nav aria-label="Recruitment CRM" className="flex gap-1 overflow-x-auto lg:flex-col">
@@ -38,6 +41,7 @@ function StaffLayout() {
             <Icon className="h-4 w-4" />{label}
           </Link>
         ))}
+        <Button variant="outline" className="mt-2 shrink-0 lg:mt-4" onClick={() => void signOut()}><LogOut /> Sign out</Button>
       </nav>
       <div className="min-w-0"><Outlet /></div>
     </div>
