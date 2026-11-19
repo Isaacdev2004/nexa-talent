@@ -62,6 +62,7 @@ function AuthPage() {
   const [googleBusy, setGoogleBusy] = useState(false);
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [code, setCode] = useState("");
+  const [codeLength, setCodeLength] = useState(8);
   const [otpType, setOtpType] = useState<"signup" | "email">("signup");
 
   useEffect(() => {
@@ -95,6 +96,7 @@ function AuthPage() {
   const requestCode = async (details: { fullName: string; email: string; password: string }) => {
     const result = await sendSignupCode({ data: { ...details, accountType } });
     setOtpType(result.otpType);
+    setCodeLength(result.codeLength);
     setSentTo(details.email);
     setCode("");
   };
@@ -181,14 +183,14 @@ function AuthPage() {
           <form className="mt-6 space-y-4" onSubmit={async (e) => {
             e.preventDefault();
             const token = code.trim();
-            if (!/^\d{6}$/.test(token)) return setErrors({ code: "Enter the 6-digit code from your email" });
+            if (!new RegExp(`^\\d{${codeLength}}$`).test(token)) return setErrors({ code: `Enter the ${codeLength}-digit code from your email` });
             setBusy(true);
             const { error } = await supabase.auth.verifyOtp({ email: sentTo, token, type: otpType });
             setBusy(false);
             if (error) toast.error("That code is not correct. Check the email and try again.");
           }}>
-            <p className="text-sm">We sent a 6-digit code to <strong>{sentTo}</strong>. Enter it here to finish creating your account.</p>
-            <Field id="code" label="6-digit code" value={code} onChange={(v) => setCode(v.replace(/\D/g, "").slice(0, 6))} error={errors["code"]} autoComplete="one-time-code" inputMode="numeric" />
+            <p className="text-sm">We sent an {codeLength}-digit code to <strong>{sentTo}</strong>. Enter it here to finish creating your account.</p>
+            <Field id="code" label={`${codeLength}-digit code`} value={code} onChange={(v) => setCode(v.replace(/\D/g, "").slice(0, codeLength))} error={errors["code"]} autoComplete="one-time-code" inputMode="numeric" className="text-center text-lg tracking-[0.35em]" />
             <Button type="submit" className="w-full" size="lg" disabled={busy}>{busy ? "Please wait…" : "Continue"}</Button>
             <button type="button" className="text-sm text-primary hover:underline" disabled={busy} onClick={async () => {
               setBusy(true);
@@ -245,11 +247,11 @@ function AuthPage() {
   );
 }
 
-function Field({ id, label, value, onChange, error, type = "text", autoComplete, inputMode }: { id: string; label: string; value: string; onChange: (v: string) => void; error: string | undefined; type?: string; autoComplete?: string; inputMode?: "numeric" | "email" | "text" }) {
+function Field({ id, label, value, onChange, error, type = "text", autoComplete, inputMode, className }: { id: string; label: string; value: string; onChange: (v: string) => void; error: string | undefined; type?: string; autoComplete?: string; inputMode?: "numeric" | "email" | "text"; className?: string }) {
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
-      <Input id={id} type={type} value={value} onChange={(e) => onChange(e.target.value)} autoComplete={autoComplete} inputMode={inputMode} aria-invalid={!!error} />
+      <Input id={id} type={type} value={value} onChange={(e) => onChange(e.target.value)} autoComplete={autoComplete} inputMode={inputMode} className={className} aria-invalid={!!error} />
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );

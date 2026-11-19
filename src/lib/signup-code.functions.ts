@@ -1,6 +1,8 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createServerFn } from "@tanstack/react-start";
 import { SELF_SERVICE_ACCOUNT_TYPES, type AccountType } from "@/lib/roles";
-import { signupCodeMessage } from "@/lib/signup-code";
+import { signupCodeHtml, signupCodeMessage, signupCodeSubject } from "@/lib/signup-code";
 
 function signupInput(d: { fullName?: string; email?: string; password?: string; accountType?: string }) {
   const fullName = String(d?.fullName ?? "").trim();
@@ -18,14 +20,18 @@ async function mailCode(to: string, code: string) {
   const key = process.env["RESEND_API_KEY"];
   const from = process.env["EMAIL_FROM"];
   if (!key || !from) throw new Error("Email is not ready yet. Please try again later.");
+  let logo: string | null = null;
+  try { logo = readFileSync(join(process.cwd(), "public", "nexa-talent-logo.png")).toString("base64"); } catch { logo = null; }
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       from,
       to: [to],
-      subject: "Your NexaTalent code",
+      subject: signupCodeSubject(code),
       text: signupCodeMessage(code),
+      html: signupCodeHtml(code),
+      ...(logo ? { attachments: [{ filename: "nexa-talent-logo.png", content: logo, content_id: "nexa-logo" }] } : {}),
     }),
   });
   if (!response.ok) throw new Error("We couldn't send the code. Please try again.");
@@ -43,7 +49,7 @@ export const sendSignupCode = createServerFn({ method: "POST" })
     });
     if (!created.error && created.data.properties.email_otp) {
       await mailCode(data.email, created.data.properties.email_otp);
-      return { otpType: "signup" as const };
+      return { otpType: "signup" as const, codeLength: created.data.properties.email_otp.length };
     }
     const message = created.error?.message ?? "";
     if (!/already registered|already been registered|already exists/i.test(message)) {
@@ -64,5 +70,5 @@ export const sendSignupCode = createServerFn({ method: "POST" })
     const again = await supabaseAdmin.auth.admin.generateLink({ type: "magiclink", email: data.email });
     if (again.error || !again.data.properties.email_otp) throw new Error("We couldn't send the code. Please try again.");
     await mailCode(data.email, again.data.properties.email_otp);
-    return { otpType: "email" as const };
+    return { otpType: "email" as const, codeLength: again.data.properties.email_otp.length };
   });
