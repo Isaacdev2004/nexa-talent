@@ -1,4 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
+import { messageEmail } from "@/lib/brand-email";
+import { nexaLogoAttachment } from "@/lib/email-logo";
 
 const STATUS_NOTICE: Record<string, { subject: string; phrase: string }> = {
   under_review: { subject: "Your application is under review", phrase: "is under review" },
@@ -31,14 +33,23 @@ async function deliverQueued() {
     .limit(25);
   if (error || !rows) return { sent: 0, failed: 0, waiting: false };
   const site = (process.env["SITE_URL"] ?? "").replace(/\/$/, "");
+  const logo = nexaLogoAttachment();
   let sent = 0;
   let failed = 0;
   for (const row of rows) {
-    const link = row.link && site ? `\n\n${site}${row.link}` : "";
+    const href = row.link && site ? `${site}${row.link.startsWith("/") ? row.link : `/${row.link}`}` : undefined;
+    const message = messageEmail(row.subject, row.body, href, Boolean(logo));
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to: [row.to_email], subject: row.subject, text: `${row.body}${link}` }),
+      body: JSON.stringify({
+        from,
+        to: [row.to_email],
+        subject: row.subject,
+        text: message.text,
+        html: message.html,
+        ...(logo ? { attachments: [logo] } : {}),
+      }),
     });
     if (response.ok) {
       sent += 1;

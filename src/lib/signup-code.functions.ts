@@ -1,6 +1,5 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { createServerFn } from "@tanstack/react-start";
+import { nexaLogoAttachment } from "@/lib/email-logo";
 import { SELF_SERVICE_ACCOUNT_TYPES, type AccountType } from "@/lib/roles";
 import { signupCodeHtml, signupCodeMessage, signupCodeSubject } from "@/lib/signup-code";
 
@@ -20,8 +19,7 @@ async function mailCode(to: string, code: string) {
   const key = process.env["RESEND_API_KEY"];
   const from = process.env["EMAIL_FROM"];
   if (!key || !from) throw new Error("Email is not ready yet. Please try again later.");
-  let logo: string | null = null;
-  try { logo = readFileSync(join(process.cwd(), "public", "nexa-talent-logo.png")).toString("base64"); } catch { logo = null; }
+  const logo = nexaLogoAttachment();
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
@@ -30,8 +28,8 @@ async function mailCode(to: string, code: string) {
       to: [to],
       subject: signupCodeSubject(code),
       text: signupCodeMessage(code),
-      html: signupCodeHtml(code),
-      ...(logo ? { attachments: [{ filename: "nexa-talent-logo.png", content: logo, content_id: "nexa-logo" }] } : {}),
+      html: signupCodeHtml(code, Boolean(logo)),
+      ...(logo ? { attachments: [logo] } : {}),
     }),
   });
   if (!response.ok) throw new Error("We couldn't send the code. Please try again.");
