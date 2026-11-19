@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { sendSignupCode } from "@/lib/signup-code.functions";
+import { publicSiteOrigin } from "@/lib/public-site";
 import { SELF_SERVICE_ACCOUNT_TYPES, accountTypeLabels, homeAfterSignIn, safeRedirect, type AccountType } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 
@@ -122,7 +123,7 @@ function AuthPage() {
       } else {
         const r = z.string().trim().email().safeParse(email);
         if (!r.success) return setErrors({ email: "Enter a valid email" });
-        const { error } = await supabase.auth.resetPasswordForEmail(r.data, { redirectTo: window.location.origin + "/reset-password" });
+        const { error } = await supabase.auth.resetPasswordForEmail(r.data, { redirectTo: `${publicSiteOrigin(window.location.origin, import.meta.env.VITE_SITE_URL)}/reset-password` });
         if (error) return toast.error(error.message);
         setSentTo(r.data);
       }
@@ -146,7 +147,7 @@ function AuthPage() {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/auth`,
+          redirectTo: `${publicSiteOrigin(window.location.origin, import.meta.env.VITE_SITE_URL)}/auth`,
           skipBrowserRedirect: true,
           queryParams: { prompt: "select_account" },
         },
