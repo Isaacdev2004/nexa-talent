@@ -1,0 +1,4 @@
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON public.specialist_referrals,public.quotations,public.service_orders,public.order_deliverables,public.order_messages FROM anon,authenticated;
+REVOKE SELECT ON public.specialist_referrals,public.quotations,public.service_orders,public.order_deliverables,public.order_messages FROM anon;
+GRANT SELECT ON public.specialist_referrals,public.quotations,public.service_orders,public.order_deliverables,public.order_messages TO authenticated;
+GRANT ALL ON public.specialist_referrals,public.quotations,public.service_orders,public.order_deliverables,public.order_messages TO service_role;
