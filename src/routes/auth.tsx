@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
-import { SELF_SERVICE_ACCOUNT_TYPES, accountTypeLabels, safeRedirect, type AccountType } from "@/lib/roles";
+import { SELF_SERVICE_ACCOUNT_TYPES, accountTypeLabels, homeAfterSignIn, safeRedirect, type AccountType } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 
 type Mode = "signin" | "signup" | "forgot";
@@ -79,7 +79,9 @@ function AuthPage() {
       if (chosen && chosen !== "candidate" && SELF_SERVICE_ACCOUNT_TYPES.includes(chosen as AccountType)) {
         await supabase.rpc("claim_oauth_account_type", { _type: chosen });
       }
-      if (!cancelled) navigate({ to: safeRedirect(redirect ?? dest), replace: true });
+      const requested = redirect ?? search.redirect;
+      const { data: staff } = await supabase.rpc("is_staff", { _user_id: user.id });
+      if (!cancelled) navigate({ to: homeAfterSignIn(staff === true, requested), replace: true });
     };
     void finish();
     return () => { cancelled = true; };

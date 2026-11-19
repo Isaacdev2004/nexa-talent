@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
-import { roleLabels } from "@/lib/roles";
+import { isStaffRole, primaryRole, roleLabels } from "@/lib/roles";
 import { Progress } from "@/components/ui/progress";
 import { StatusBadge } from "@/components/app/StatusBadge";
 import { applicationsQuery, candidateProfileQuery, onboardingProgress, type JobSnapshot } from "@/lib/candidate";
@@ -48,8 +48,8 @@ const nextSteps: Record<string, { icon: typeof Search; title: string; body: stri
 function Dashboard() {
   const { user, signOut } = useAuth();
   const { data, isLoading, error } = useAccount(user?.id);
-  const primaryRole = data?.roles[0];
-  const steps = (primaryRole && nextSteps[primaryRole]) ?? [];
+  const mainRole = primaryRole(data?.roles ?? []);
+  const steps = (mainRole && nextSteps[mainRole]) ?? [];
 
   return (
     <section className="container-site py-12">
@@ -71,18 +71,18 @@ function Dashboard() {
       {data?.profile?.account_status === "pending_review" && (
         <div className="mt-8 flex gap-3 rounded-md border border-warning/40 bg-warning/10 p-4 text-sm">
           <Clock className="h-5 w-5 shrink-0 text-warning" />
-          <p>Your {roleLabels[primaryRole ?? ""]?.toLowerCase()} account is waiting for review by our team. We'll email you once it's approved.</p>
+          <p>Your {roleLabels[mainRole ?? ""]?.toLowerCase()} account is waiting for review by our team. We'll email you once it's approved.</p>
         </div>
       )}
-      {data?.profile?.account_status === "active" && primaryRole && ["recruitment_officer", "admin", "super_admin"].includes(primaryRole) && (
+      {data?.profile?.account_status === "active" && mainRole && isStaffRole(mainRole) && (
         <div className="mt-8 flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-surface p-4 text-sm"><span className="flex items-center gap-3"><ShieldCheck className="h-5 w-5 text-primary" />You have recruitment team access.</span><Button asChild size="sm"><Link to="/staff">Open recruitment CRM</Link></Button></div>
       )}
 
-      {primaryRole === "candidate" && user && <CandidatePanel uid={user.id} />}
-      {primaryRole === "specialist" && <div className="mt-8 flex flex-wrap gap-3"><Button asChild><Link to="/specialist">Manage specialist profile</Link></Button><Button asChild variant="outline"><Link to="/specialist-work">Referrals & service orders</Link></Button></div>}
-      {primaryRole === "employer" && <div className="mt-8"><Button asChild><Link to="/employer">Open employer workspace</Link></Button></div>}
-      {primaryRole === "recruiter" && data?.profile?.account_status === "active" && <div className="mt-8"><Button asChild><Link to="/recruiter">Open recruiter workspace</Link></Button></div>}
-      {primaryRole !== "candidate" && primaryRole !== "employer" && steps.length > 0 && (
+      {mainRole === "candidate" && user && <CandidatePanel uid={user.id} />}
+      {mainRole === "specialist" && <div className="mt-8 flex flex-wrap gap-3"><Button asChild><Link to="/specialist">Manage specialist profile</Link></Button><Button asChild variant="outline"><Link to="/specialist-work">Referrals & service orders</Link></Button></div>}
+      {mainRole === "employer" && <div className="mt-8"><Button asChild><Link to="/employer">Open employer workspace</Link></Button></div>}
+      {mainRole === "recruiter" && data?.profile?.account_status === "active" && <div className="mt-8"><Button asChild><Link to="/recruiter">Open recruiter workspace</Link></Button></div>}
+      {mainRole !== "candidate" && mainRole !== "employer" && steps.length > 0 && (
         <div className="mt-10 grid gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-3">
           {steps.map(({ icon: Icon, title, body }) => (
             <div key={title} className="bg-surface p-6">

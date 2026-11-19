@@ -18,8 +18,26 @@ export const roleLabels: Record<string, string> = {
   super_admin: "Super administrator",
 };
 
+const STAFF_ROLES = ["recruitment_officer", "admin", "super_admin"] as const;
+
+export function isStaffRole(role: string): boolean {
+  return (STAFF_ROLES as readonly string[]).includes(role);
+}
+
+/** Staff access wins over a candidate role on the same account. */
+export function primaryRole(roles: string[]): string | undefined {
+  return roles.find(isStaffRole) ?? roles[0];
+}
+
 /** Only allow same-origin relative paths as post-login destinations. */
 export function safeRedirect(path: string | undefined): string {
   if (!path || !path.startsWith("/") || path.startsWith("//") || path.includes("\\")) return "/dashboard";
   return path;
+}
+
+/** Staff sign-in opens the recruitment area unless a specific page was requested. */
+export function homeAfterSignIn(isStaff: boolean, requested?: string): string {
+  const target = safeRedirect(requested);
+  if (requested && target !== "/dashboard") return target;
+  return isStaff ? "/staff" : target;
 }
