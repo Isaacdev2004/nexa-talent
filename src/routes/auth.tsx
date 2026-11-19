@@ -1,4 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { Eye, EyeOff } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -220,7 +221,14 @@ function AuthPage() {
                     <legend className="mb-2 text-sm font-medium">I'm joining as</legend>
                     <div className="grid grid-cols-2 gap-2">
                       {SELF_SERVICE_ACCOUNT_TYPES.map((t) => (
-                        <button type="button" key={t} onClick={() => setAccountType(t)} aria-pressed={accountType === t}
+                        <button type="button" key={t} onClick={() => {
+                          if (t === accountType) return;
+                          setAccountType(t);
+                          setFullName("");
+                          setEmail("");
+                          setPassword("");
+                          setErrors({});
+                        }} aria-pressed={accountType === t}
                           className={cn("rounded-md border p-3 text-left transition-colors", accountType === t ? "border-primary bg-secondary" : "border-border hover:border-primary/40")}>
                           <span className="block text-sm font-semibold">{accountTypeLabels[t].label}</span>
                           <span className="block text-xs text-muted-foreground">{accountTypeLabels[t].hint}</span>
@@ -232,7 +240,7 @@ function AuthPage() {
                 </>
               )}
               <Field id="email" label="Email" type="email" value={email} onChange={setEmail} error={errors["email"]} autoComplete="email" />
-              {mode !== "forgot" && <Field id="password" label="Password" type="password" value={password} onChange={setPassword} error={errors["password"]} autoComplete={mode === "signup" ? "new-password" : "current-password"} />}
+              {mode !== "forgot" && <Field id="password" label="Password" type="password" reveal value={password} onChange={setPassword} error={errors["password"]} autoComplete={mode === "signup" ? "new-password" : "current-password"} />}
               {mode === "signin" && <button type="button" onClick={() => setMode("forgot")} className="text-sm text-primary hover:underline">Forgot password?</button>}
               <Button type="submit" className="w-full" size="lg" disabled={busy}>{busy ? "Please wait…" : mode === "signup" ? "Create account" : mode === "forgot" ? "Send reset link" : "Sign in"}</Button>
               {mode === "signup" && <p className="text-xs text-muted-foreground">By creating an account you agree to our <Link to="/terms" className="underline">Terms</Link> and <Link to="/privacy" className="underline">Privacy policy</Link>.</p>}
@@ -248,11 +256,19 @@ function AuthPage() {
   );
 }
 
-function Field({ id, label, value, onChange, error, type = "text", autoComplete, inputMode, className }: { id: string; label: string; value: string; onChange: (v: string) => void; error: string | undefined; type?: string; autoComplete?: string; inputMode?: "numeric" | "email" | "text"; className?: string }) {
+function Field({ id, label, value, onChange, error, type = "text", autoComplete, inputMode, className, reveal = false }: { id: string; label: string; value: string; onChange: (v: string) => void; error: string | undefined; type?: string; autoComplete?: string; inputMode?: "numeric" | "email" | "text"; className?: string; reveal?: boolean }) {
+  const [visible, setVisible] = useState(false);
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
-      <Input id={id} type={type} value={value} onChange={(e) => onChange(e.target.value)} autoComplete={autoComplete} inputMode={inputMode} className={className} aria-invalid={!!error} />
+      <div className="relative">
+        <Input id={id} type={reveal && visible ? "text" : type} value={value} onChange={(e) => onChange(e.target.value)} autoComplete={autoComplete} inputMode={inputMode} className={cn(className, reveal && "pr-10")} aria-invalid={!!error} />
+        {reveal && (
+          <button type="button" className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-muted-foreground hover:text-foreground" aria-label={visible ? "Hide password" : "Show password"} aria-pressed={visible} onClick={() => setVisible((shown) => !shown)}>
+            {visible ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
+          </button>
+        )}
+      </div>
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
