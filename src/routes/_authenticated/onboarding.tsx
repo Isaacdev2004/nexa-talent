@@ -15,7 +15,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { candidateProfileQuery, documentsQuery } from "@/lib/candidate";
 import { readResumeDetails } from "@/lib/resume-read.functions";
-import { mergeResumeIntoForm } from "@/lib/resume-parse";
+import { joinPhone, mergeResumeIntoForm, resumeHasDetails, splitPhone } from "@/lib/resume-parse";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/onboarding")({
@@ -56,8 +56,9 @@ function Onboarding() {
   useEffect(() => {
     if (!data) return;
     const p = data.profile, c = data.candidate;
+    const phone = splitPhone(p?.phone ?? "");
     setF({
-      full_name: p?.full_name ?? "", phone: p?.phone ?? "", country: p?.country ?? "", city: p?.city ?? "",
+      full_name: p?.full_name ?? "", dial_code: phone.dialCode, phone: phone.phone, country: p?.country ?? "", city: p?.city ?? "",
       current_position: c?.current_position ?? "", industry: c?.industry ?? "", years_experience: c?.years_experience?.toString() ?? "", summary: c?.summary ?? "",
       skills: (c?.skills ?? []).join(", "), certifications: (c?.certifications ?? []).join(", "),
       preferred_titles: (c?.preferred_titles ?? []).join(", "), preferred_locations: (c?.preferred_locations ?? []).join(", "),
@@ -80,19 +81,19 @@ function Onboarding() {
     try {
       const details = await readResumeDetails({ data: { documentId } });
       const merged = mergeResumeIntoForm({
-        name: f["full_name"] ?? "", phone: f["phone"] ?? "", city: f["city"] ?? "", country: f["country"] ?? "",
-        position: f["current_position"] ?? "", years: f["years_experience"] ?? "", summary: f["summary"] ?? "",
+        name: f["full_name"] ?? "", dialCode: f["dial_code"] ?? "", phone: f["phone"] ?? "", city: f["city"] ?? "", country: f["country"] ?? "",
+        position: f["current_position"] ?? "", industry: f["industry"] ?? "", years: f["years_experience"] ?? "", summary: f["summary"] ?? "",
         skills: f["skills"] ?? "", history, education,
-      }, details, false);
+      }, details);
       setF((current) => ({
         ...current,
-        full_name: merged.name, phone: merged.phone, city: merged.city, country: merged.country,
-        current_position: merged.position, years_experience: merged.years, summary: merged.summary, skills: merged.skills,
+        full_name: merged.name, dial_code: merged.dialCode, phone: merged.phone, city: merged.city, country: merged.country,
+        current_position: merged.position, industry: merged.industry, years_experience: merged.years, summary: merged.summary, skills: merged.skills,
       }));
       setHistory(merged.history);
       setEducation(merged.education);
-      if (details.experience.length || details.education.length) toast.success("Filled your work experience and education from the resume. Go back and check them before you finish.");
-      else toast("We couldn't find work experience or education in that file.");
+      if (resumeHasDetails(details)) toast.success("Filled your phone, country, role, industry, experience and education from the resume. Go back and check them before you finish.");
+      else toast("We couldn't find those details in that file.");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "We couldn't read that resume.");
     }
@@ -121,7 +122,7 @@ function Onboarding() {
       profile_visibility: f["profile_visibility"] || "recruiters", onboarding_step: nextStep,
     };
     const [a, b] = await Promise.all([
-      supabase.from("profiles").update({ full_name: f["full_name"] ?? "", phone: f["phone"] || null, country: f["country"] || null, city: f["city"] || null }).eq("id", uid),
+      supabase.from("profiles").update({ full_name: f["full_name"] ?? "", phone: joinPhone(f["dial_code"] ?? "", f["phone"] ?? "") || null, country: f["country"] || null, city: f["city"] || null }).eq("id", uid),
       supabase.from("candidates").update(cand).eq("user_id", uid),
     ]);
     setSaving(false);
@@ -147,7 +148,10 @@ function Onboarding() {
         {step === 1 && (<>
           <F label="Full name" required error={errors["full_name"]}><Input value={f["full_name"] ?? ""} onChange={set("full_name")} autoComplete="name" /></F>
           <F label="Email"><Input value={data.profile?.email ?? ""} disabled /></F>
-          <F label="Phone" error={errors["phone"]}><Input value={f["phone"] ?? ""} onChange={set("phone")} autoComplete="tel" /></F>
+          <div className="grid gap-5 sm:grid-cols-[8rem_1fr]">
+            <F label="Country code"><Input value={f["dial_code"] ?? ""} onChange={set("dial_code")} placeholder="+234" autoComplete="tel-country-code" /></F>
+            <F label="Phone" error={errors["phone"]}><Input value={f["phone"] ?? ""} onChange={set("phone")} autoComplete="tel-national" /></F>
+          </div>
           <div className="grid gap-5 sm:grid-cols-2">
             <F label="Country" required error={errors["country"]}><Input value={f["country"] ?? ""} onChange={set("country")} autoComplete="country-name" /></F>
             <F label="City" error={errors["city"]}><Input value={f["city"] ?? ""} onChange={set("city")} autoComplete="address-level2" /></F>
@@ -181,7 +185,7 @@ function Onboarding() {
         {step === 5 && (<>
           <div>
             <h2 className="font-semibold">Resume and documents</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Your resume fills any work experience and education that are still blank.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Your resume fills your phone, country code, country, current role, industry, years of experience, summary, skills, work experience and education.</p>
             {errors["resume"] && <p role="alert" className="mt-2 text-sm text-destructive">{errors["resume"]}</p>}
             <ul className="mt-3 divide-y divide-border rounded-md border border-border">
               {docs.length === 0 && <li className="p-3 text-sm text-muted-foreground">No documents yet.</li>}

@@ -2,9 +2,11 @@ export type ResumeEntry = { title: string; org: string; period: string };
 
 export type ResumeDetails = {
   fullName: string;
+  dialCode: string;
   phone: string;
   city: string;
   country: string;
+  industry: string;
   summary: string;
   currentPosition: string;
   years: string;
@@ -26,13 +28,57 @@ function clean(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function headingOf(line: string) {
-  const text = line.replace(/[:|–-]+$/g, "").trim();
-  if (text.length > 48) return null;
+function splitHeading(line: string) {
+  const text = line.trim();
+  if (!text || text.length > 160) return null;
   for (const key of Object.keys(HEADINGS) as Array<keyof typeof HEADINGS>) {
-    if (HEADINGS[key].test(text)) return key;
+    const match = text.match(HEADINGS[key]);
+    if (!match) continue;
+    const rest = clean(text.slice(match[0].length).replace(/^[:|–—-]+/, ""));
+    if (!rest && text.length > 48) return null;
+    return { key, rest };
   }
   return null;
+}
+
+function headingOf(line: string) {
+  return splitHeading(line)?.key ?? null;
+}
+
+function labeled(source: string, labels: string[]) {
+  const pattern = new RegExp(`(?:^|\\n)\\s*(?:${labels.join("|")})\\s*[:\\-]\\s*([^\\n]+)`, "i");
+  return clean(source.match(pattern)?.[1] ?? "");
+}
+
+const PHONE = /(?:\+\d{1,3}|00\d{1,3})(?:[\s.-]*\d){6,14}|\(?\d{2,4}\)?[\s.-]\d{3,4}[\s.-]\d{3,4}(?:[\s.-]\d{2,4})?/;
+
+export function splitPhone(value: string) {
+  const text = value.trim();
+  const match = text.match(/^(\+\d{1,3})\s*(.*)$/);
+  if (!match) return { dialCode: "", phone: text.slice(0, 40) };
+  return { dialCode: match[1] ?? "", phone: (match[2] ?? "").trim().slice(0, 40) };
+}
+
+export function joinPhone(dialCode: string, phone: string) {
+  const code = dialCode.trim();
+  const number = phone.trim();
+  if (!code) return number.slice(0, 40);
+  if (number.startsWith(code)) return number.slice(0, 40);
+  return `${code} ${number}`.trim().slice(0, 40);
+}
+
+function normaliseCode(value: string) {
+  const match = value.match(/(\+\d{1,3}|00\d{1,3})/);
+  if (!match?.[1]) return "";
+  return match[1].startsWith("00") ? `+${match[1].slice(2)}` : match[1];
+}
+
+function phoneParts(raw: string) {
+  const text = clean(raw);
+  const match = text.match(/(\+\d{1,3}|00\d{1,3})/);
+  if (!match?.[1] || match.index == null) return { dialCode: "", phone: text.slice(0, 40) };
+  const dialCode = match[1].startsWith("00") ? `+${match[1].slice(2)}` : match[1];
+  return { dialCode: dialCode.slice(0, 6), phone: clean(text.slice(match.index + match[1].length)).slice(0, 40) };
 }
 
 function splitRole(head: string): Pick<ResumeEntry, "title" | "org"> {
@@ -88,19 +134,34 @@ function yearsBetween(entries: ResumeEntry[]) {
   return String(Math.max(0, Math.min(70, end - start)));
 }
 
-function contactFrom(lines: string[]) {
-  const joined = lines.join("\n");
-  const phone = joined.match(/(?:\+\d{1,3}[\s.-]?)?(?:\(?\d{2,4}\)?[\s.-]?)?\d{3,4}[\s.-]\d{3,4}(?:[\s.-]\d{2,4})?/)?.[0] ?? "";
+function contactFrom(lines: string[], source: string) {
+  const labeledPhone = labeled(source, ["phone", "mobile", "telephone", "tel", "cell", "contact number"]);
+  const seenPhone = labeledPhone || lines.join("\n").match(PHONE)?.[0] || "";
+  const parts = phoneParts(seenPhone);
+  const explicitCode = normaliseCode(labeled(source, ["country code", "dial code", "dialling code", "dialing code"]));
   let city = "";
-  let country = "";
-  const place = lines.find((line) => line.includes(",") && line.length < 80 && !line.includes("@") && !/\d{3}/.test(line));
+  let country = labeled(source, ["country"]).slice(0, 80);
+  const place = lines.find((line) => line.includes(",") && line.length < 80 && !line.includes("@") && !/\d{3}/.test(line) && !headingOf(line));
   if (place) {
-    const parts = place.split(",").map(clean).filter(Boolean);
-    city = parts[0] ?? "";
-    country = parts[parts.length - 1] ?? "";
+    const bits = place.split(",").map(clean).filter(Boolean);
+    city = bits[0] ?? "";
+    if (!country) country = bits[bits.length - 1] ?? "";
   }
   const nameLine = lines.find((line) => /^[A-Za-z][A-Za-z.'’ -]{2,58}$/.test(line) && !/^(curriculum vitae|resume|cv)$/i.test(line) && line.split(" ").length >= 2 && line.split(" ").length <= 5);
-  return { fullName: nameLine ?? "", phone: clean(phone).slice(0, 40), city: city.slice(0, 80), country: country.slice(0, 80) };
+  return {
+    fullName: nameLine ?? "",
+    dialCode: explicitCode || parts.dialCode,
+    phone: parts.phone,
+    city: city.slice(0, 80),
+    country,
+  };
+}
+
+function statedYears(source: string) {
+  const match = source.match(/(?:years of experience|years' experience|total experience)\s*[:\-]?\s*(\d{1,2})/i);
+  if (!match?.[1]) return "";
+  const value = Number(match[1]);
+  return value <= 70 ? String(value) : "";
 }
 
 function skillsFrom(lines: string[]) {
@@ -113,10 +174,12 @@ function skillsFrom(lines: string[]) {
 
 export type ResumeForm = {
   name: string;
+  dialCode: string;
   phone: string;
   city: string;
   country: string;
   position: string;
+  industry: string;
   years: string;
   summary: string;
   skills: string;
@@ -128,6 +191,10 @@ function blank(current: string, next: string) {
   return current.trim() ? current : next;
 }
 
+function fromResume(found: string, current: string) {
+  return found.trim() ? found : current;
+}
+
 function hasEntry(rows: ResumeEntry[]) {
   return rows.some((row) => row.title || row.org || row.period);
 }
@@ -135,13 +202,15 @@ function hasEntry(rows: ResumeEntry[]) {
 export function mergeResumeIntoForm(current: ResumeForm, parsed: ResumeDetails, replaceLists = true): ResumeForm {
   return {
     name: blank(current.name, parsed.fullName),
-    phone: blank(current.phone, parsed.phone),
+    dialCode: fromResume(parsed.dialCode, current.dialCode),
+    phone: fromResume(parsed.phone, current.phone),
     city: blank(current.city, parsed.city),
-    country: blank(current.country, parsed.country),
-    position: blank(current.position, parsed.currentPosition),
-    years: blank(current.years, parsed.years),
-    summary: blank(current.summary, parsed.summary),
-    skills: blank(current.skills, parsed.skills.join(", ")),
+    country: fromResume(parsed.country, current.country),
+    position: fromResume(parsed.currentPosition, current.position),
+    industry: fromResume(parsed.industry, current.industry),
+    years: fromResume(parsed.years, current.years),
+    summary: fromResume(parsed.summary, current.summary),
+    skills: fromResume(parsed.skills.join(", "), current.skills),
     history: parsed.experience.length && (replaceLists || !hasEntry(current.history)) ? parsed.experience : current.history,
     education: parsed.education.length && (replaceLists || !hasEntry(current.education)) ? parsed.education : current.education,
   };
@@ -154,9 +223,10 @@ export function parseResumeText(source: string): ResumeDetails {
   const preface: string[] = [];
   let current: keyof typeof sections | null = null;
   for (const line of lines) {
-    const heading = line ? headingOf(line) : null;
+    const heading = line ? splitHeading(line) : null;
     if (heading) {
-      current = heading;
+      current = heading.key;
+      if (heading.rest) sections[current].push(heading.rest);
       continue;
     }
     if (current) sections[current].push(line);
@@ -165,14 +235,20 @@ export function parseResumeText(source: string): ResumeDetails {
   const experience = entriesFrom(sections.experience, false);
   const education = entriesFrom(sections.education, true);
   const summary = clean(sections.summary.filter(Boolean).join(" ")).slice(0, 4000);
-  const contact = contactFrom(preface);
+  const contact = contactFrom(preface, restored);
+  const statedRole = labeled(restored, ["current role", "current position", "current job title"]).slice(0, 150);
   return {
     ...contact,
+    industry: labeled(restored, ["industry", "sector"]).slice(0, 100),
     summary,
-    currentPosition: experience[0]?.title ?? "",
-    years: yearsBetween(experience),
+    currentPosition: statedRole || experience[0]?.title || "",
+    years: statedYears(restored) || yearsBetween(experience),
     skills: skillsFrom(sections.skills),
     experience,
     education,
   };
+}
+
+export function resumeHasDetails(parsed: ResumeDetails) {
+  return Boolean(parsed.dialCode || parsed.phone || parsed.country || parsed.currentPosition || parsed.industry || parsed.years || parsed.summary || parsed.skills.length || parsed.experience.length || parsed.education.length);
 }
