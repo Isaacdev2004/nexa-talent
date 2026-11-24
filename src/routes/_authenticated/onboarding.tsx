@@ -14,6 +14,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { candidateProfileQuery, documentsQuery } from "@/lib/candidate";
+import { readResumeDetails } from "@/lib/resume-read.functions";
+import { mergeResumeIntoForm } from "@/lib/resume-parse";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/onboarding")({
@@ -73,6 +75,28 @@ function Onboarding() {
   );
 
   const set = (k: string) => (e: { target: { value: string } }) => setF((s) => ({ ...s, [k]: e.target.value }));
+
+  const fillFromResume = async (documentId: string) => {
+    try {
+      const details = await readResumeDetails({ data: { documentId } });
+      const merged = mergeResumeIntoForm({
+        name: f["full_name"] ?? "", phone: f["phone"] ?? "", city: f["city"] ?? "", country: f["country"] ?? "",
+        position: f["current_position"] ?? "", years: f["years_experience"] ?? "", summary: f["summary"] ?? "",
+        skills: f["skills"] ?? "", history, education,
+      }, details, false);
+      setF((current) => ({
+        ...current,
+        full_name: merged.name, phone: merged.phone, city: merged.city, country: merged.country,
+        current_position: merged.position, years_experience: merged.years, summary: merged.summary, skills: merged.skills,
+      }));
+      setHistory(merged.history);
+      setEducation(merged.education);
+      if (details.experience.length || details.education.length) toast.success("Filled your work experience and education from the resume. Go back and check them before you finish.");
+      else toast("We couldn't find work experience or education in that file.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "We couldn't read that resume.");
+    }
+  };
 
   const save = async (finish = false) => {
     setErrors({});
@@ -157,13 +181,14 @@ function Onboarding() {
         {step === 5 && (<>
           <div>
             <h2 className="font-semibold">Resume and documents</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Your resume fills any work experience and education that are still blank.</p>
             {errors["resume"] && <p role="alert" className="mt-2 text-sm text-destructive">{errors["resume"]}</p>}
             <ul className="mt-3 divide-y divide-border rounded-md border border-border">
               {docs.length === 0 && <li className="p-3 text-sm text-muted-foreground">No documents yet.</li>}
               {docs.map((d) => <li key={d.id} className="flex justify-between p-3 text-sm"><span>{d.file_name}</span><span className="text-muted-foreground">{d.kind.replace("_", " ")}</span></li>)}
             </ul>
             <div className="mt-4 flex flex-wrap gap-6">
-              <DocumentUploader userId={uid} kind="resume" label="Upload resume" />
+              <DocumentUploader userId={uid} kind="resume" label="Upload resume" onUploaded={(id) => { void fillFromResume(id); }} />
               <DocumentUploader userId={uid} kind="supporting" label="Upload other document" />
             </div>
           </div>

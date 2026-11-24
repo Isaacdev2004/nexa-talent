@@ -17,6 +17,8 @@ import { applicationsQuery, candidateProfileQuery, documentsQuery, type JobSnaps
 import { emailApplicationReceived } from "@/lib/email.functions";
 import { formatClosingDate } from "@/lib/jobs";
 import { jobQuery } from "@/lib/jobs.queries";
+import { readResumeDetails } from "@/lib/resume-read.functions";
+import { mergeResumeIntoForm } from "@/lib/resume-parse";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/apply/$slug")({
@@ -53,7 +55,11 @@ function Apply() {
   const [info, setInfo] = useState({ name: "", email: "", phone: "", country: "", city: "", position: "", industry: "", years: "", summary: "" });
   const [history, setHistory] = useState<Entry[]>([]);
   const [education, setEducation] = useState<Entry[]>([]);
+  const [skills, setSkills] = useState("");
   const [ready, setReady] = useState(false);
+  const [reading, setReading] = useState(false);
+  const [parsedResumeId, setParsedResumeId] = useState<string | null>(null);
+  const [filledFromResume, setFilledFromResume] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submittedId, setSubmittedId] = useState<string | null>(null);
   const [flags, setFlags] = useState<Record<string, string>>({});
@@ -76,6 +82,7 @@ function Apply() {
     });
     setHistory(asEntries(c?.employment_history));
     setEducation(asEntries(c?.education));
+    setSkills((c?.skills ?? []).join(", "));
     setReady(true);
   }, [prof.data, ready]);
 
@@ -119,6 +126,7 @@ function Apply() {
         industry: info.industry.trim() || null,
         years_experience: info.years.trim() ? Number(info.years) : null,
         summary: info.summary.trim() || null,
+        skills: skills.split(",").map((item) => item.trim()).filter(Boolean).slice(0, 30),
         employment_history: kept(history),
         education: kept(education),
       }).eq("user_id", uid),
@@ -131,6 +139,29 @@ function Apply() {
     const found = issuesFor(step);
     setFlags(found);
     if (Object.keys(found).length > 0) return;
+    if (step === 1 && d.resumeId && d.resumeId !== parsedResumeId) {
+      setReading(true);
+      try {
+        const details = await readResumeDetails({ data: { documentId: d.resumeId } });
+        const merged = mergeResumeIntoForm({
+          name: info.name, phone: info.phone, city: info.city, country: info.country,
+          position: info.position, years: info.years, summary: info.summary, skills, history, education,
+        }, details);
+        setInfo({ ...info, name: merged.name, phone: merged.phone, city: merged.city, country: merged.country, position: merged.position, years: merged.years, summary: merged.summary });
+        setSkills(merged.skills);
+        setHistory(merged.history);
+        setEducation(merged.education);
+        setParsedResumeId(d.resumeId);
+        setFilledFromResume(details.experience.length > 0 || details.education.length > 0);
+        const sections = [details.experience.length ? "work experience" : "", details.education.length ? "education" : ""].filter(Boolean);
+        if (sections.length) toast.success(`Filled ${sections.join(" and ")} from your resume. Check them and change anything that isn't right.`);
+        else toast("We couldn't find work experience or education in that file. Add them on the next steps.");
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "We couldn't read that resume. You can still fill in the details.");
+      } finally {
+        setReading(false);
+      }
+    }
     if (step === 2 || step === 3) {
       try { await saveProfile(); } catch (err) { toast.error(err instanceof Error ? err.message : "Couldn't save your details."); return; }
     }
@@ -205,7 +236,7 @@ function Apply() {
               {Object.keys(flags).length > 0 && <div role="alert" className="rounded-md border border-destructive bg-destructive/10 px-3 py-2 text-sm text-destructive">This step is incomplete. Fix the items in red before you continue.</div>}
 
               {step === 1 && (<>
-                <p className="text-sm text-muted-foreground">Attach the resume you want considered for this role.</p>
+                <p className="text-sm text-muted-foreground">Attach the resume you want considered for this role. We'll read it and fill in your work experience, education, and any contact details that are still blank. You can correct everything afterwards.</p>
                 {flags["resume"] && <Flag>{flags["resume"]}</Flag>}
                 <div className={cn("space-y-2 rounded-md border border-dashed p-4", flags["resume"] ? "border-destructive" : "border-border")}>
                   {resumes.length === 0 && <p className="text-sm text-muted-foreground">No resume on your profile yet.</p>}
@@ -242,6 +273,7 @@ function Apply() {
               </>)}
 
               {step === 3 && (<>
+                {filledFromResume && <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">These details were read from your resume. Change anything that isn't right before you continue.</p>}
                 <Field id="position" label="Current position" value={info.position} onChange={(position) => setInfo({ ...info, position })} />
                 <div className="grid gap-5 sm:grid-cols-2">
                   <Field id="industry" label="Industry" value={info.industry} onChange={(industry) => setInfo({ ...info, industry })} />
@@ -251,6 +283,7 @@ function Apply() {
                   <Label htmlFor="summary">Professional summary</Label>
                   <Textarea id="summary" rows={5} maxLength={4000} value={info.summary} onChange={(e) => setInfo({ ...info, summary: e.target.value })} />
                 </div>
+                <Field id="skills" label="Skills" value={skills} onChange={setSkills} placeholder="Separate skills with commas" />
                 <Entries label="Work experience" items={history} onChange={setHistory} labels={["Job title", "Employer", "Dates"]} />
                 <Entries label="Education" items={education} onChange={setEducation} labels={["Qualification", "Institution", "Year"]} />
               </>)}
@@ -284,6 +317,7 @@ function Apply() {
                 <ReviewRow label="Location" value={[info.city, info.country].filter(Boolean).join(", ") || "—"} onEdit={() => setStep(2)} />
                 <ReviewRow label="Experience" value={[info.position, info.years ? `${info.years} years` : ""].filter(Boolean).join(" · ") || "—"} onEdit={() => setStep(3)} />
                 <ReviewRow label="Work history" value={kept(history).map((row) => row.title || row.org).filter(Boolean).join(", ") || "None added"} onEdit={() => setStep(3)} />
+                <ReviewRow label="Education" value={kept(education).map((row) => row.title || row.org).filter(Boolean).join(", ") || "None added"} onEdit={() => setStep(3)} />
                 <ReviewRow label="Notice period" value={d.notice || "—"} onEdit={() => setStep(4)} />
                 <ReviewRow label="Right to work" value={d.rightToWork || "—"} onEdit={() => setStep(4)} />
                 <ReviewRow label="Cover letter" value={d.coverLetter ? `${d.coverLetter.slice(0, 140)}${d.coverLetter.length > 140 ? "…" : ""}` : "None"} onEdit={() => setStep(4)} />
@@ -297,7 +331,7 @@ function Apply() {
             <div className="mt-6 flex items-center justify-between">
               <Button variant="outline" onClick={() => step === 1 ? setD({ ...d, begun: false }) : setStep((current) => current - 1)}>Back</Button>
               {step < 5
-                ? <Button onClick={() => void next()}>Save and continue</Button>
+                ? <Button onClick={() => void next()} disabled={reading}>{reading ? "Reading your resume…" : "Save and continue"}</Button>
                 : <Button onClick={() => void submit()} disabled={submitting} className="bg-accent text-accent-foreground hover:bg-accent/90">{submitting ? "Submitting…" : "Submit application"}</Button>}
             </div>
           </>
