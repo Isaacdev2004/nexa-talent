@@ -113,24 +113,26 @@ function Onboarding() {
       <p className="eyebrow text-muted-foreground">Candidate profile</p>
       <h1 className="mt-2 text-3xl font-bold text-primary">Set up your profile</h1>
       <p className="mt-2 text-muted-foreground">Your progress is saved at every step, so you can come back any time.</p>
-      <div className="mt-8"><Stepper steps={STEPS} current={step} /></div>
+      <div className="mt-8"><Stepper steps={STEPS} current={step} onStep={(n) => setStep(n)} /></div>
 
       <div className="mt-8 space-y-5 rounded-lg border border-border bg-surface p-6 md:p-8">
+        <div>
+          <h2 className="text-xl font-semibold text-primary">{STEPS[step - 1]}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Fields marked * are required.</p>
+        </div>
         {step === 1 && (<>
-          <F label="Full name" error={errors["full_name"]}><Input value={f["full_name"] ?? ""} onChange={set("full_name")} autoComplete="name" /></F>
+          <F label="Full name" required error={errors["full_name"]}><Input value={f["full_name"] ?? ""} onChange={set("full_name")} autoComplete="name" /></F>
           <F label="Email"><Input value={data.profile?.email ?? ""} disabled /></F>
-          <div className="grid gap-5 md:grid-cols-3">
-            <F label="Phone" error={errors["phone"]}><Input value={f["phone"] ?? ""} onChange={set("phone")} autoComplete="tel" /></F>
-            <F label="Country" error={errors["country"]}><Input value={f["country"] ?? ""} onChange={set("country")} autoComplete="country-name" /></F>
-            <F label="City" error={errors["city"]}><Input value={f["city"] ?? ""} onChange={set("city")} /></F>
+          <F label="Phone" error={errors["phone"]}><Input value={f["phone"] ?? ""} onChange={set("phone")} autoComplete="tel" /></F>
+          <div className="grid gap-5 sm:grid-cols-2">
+            <F label="Country" required error={errors["country"]}><Input value={f["country"] ?? ""} onChange={set("country")} autoComplete="country-name" /></F>
+            <F label="City" error={errors["city"]}><Input value={f["city"] ?? ""} onChange={set("city")} autoComplete="address-level2" /></F>
           </div>
         </>)}
         {step === 2 && (<>
-          <div className="grid gap-5 md:grid-cols-2">
-            <F label="Current position"><Input value={f["current_position"] ?? ""} onChange={set("current_position")} /></F>
-            <F label="Industry"><Input value={f["industry"] ?? ""} onChange={set("industry")} /></F>
-          </div>
-          <F label="Years of experience" error={errors["years_experience"]}><Input type="number" min={0} max={70} value={f["years_experience"] ?? ""} onChange={set("years_experience")} className="max-w-32" /></F>
+          <F label="Current position"><Input value={f["current_position"] ?? ""} onChange={set("current_position")} /></F>
+          <F label="Industry"><Input value={f["industry"] ?? ""} onChange={set("industry")} /></F>
+          <F label="Years of experience" required error={errors["years_experience"]}><Input type="number" min={0} max={70} value={f["years_experience"] ?? ""} onChange={set("years_experience")} className="max-w-40" /></F>
           <F label="Professional summary"><Textarea rows={5} maxLength={4000} value={f["summary"] ?? ""} onChange={set("summary")} /></F>
         </>)}
         {step === 3 && (<>
@@ -183,8 +185,8 @@ function Onboarding() {
   );
 }
 
-function F({ label, hint, error, children }: { label: string; hint?: string; error?: string | undefined; children: React.ReactNode }) {
-  return <label className="block space-y-1.5"><span className="text-sm font-medium">{label}{hint && <span className="ml-2 font-normal text-muted-foreground">{hint}</span>}</span>{children}{error && <span className="block text-xs text-destructive">{error}</span>}</label>;
+function F({ label, hint, error, required, children }: { label: string; hint?: string; error?: string | undefined; required?: boolean; children: React.ReactNode }) {
+  return <label className="block space-y-1.5"><span className="text-sm font-medium">{label}{required && <span className="text-destructive"> *</span>}{hint && <span className="ml-2 font-normal text-muted-foreground">{hint}</span>}</span>{children}{error && <span className="block text-xs text-destructive">{error}</span>}</label>;
 }
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return <button type="button" aria-pressed={active} onClick={onClick} className={cn("rounded-full border px-3 py-1.5 text-sm transition-colors", active ? "border-primary bg-primary text-primary-foreground" : "border-border hover:border-primary/40")}>{children}</button>;

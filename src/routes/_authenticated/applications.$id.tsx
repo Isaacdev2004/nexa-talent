@@ -66,7 +66,7 @@ function ApplicationDetail() {
             ))}</ul></div>
           {a.cover_letter && <div><h2 className="font-semibold">Cover letter</h2><p className="mt-3 whitespace-pre-line text-sm text-foreground/85">{a.cover_letter}</p></div>}
           <div><h2 className="font-semibold">Your answers</h2>
-            <dl className="mt-3 grid gap-3 text-sm md:grid-cols-2"><div><dt className="text-muted-foreground">Notice period</dt><dd>{answers["notice_period"] || "—"}</dd></div><div><dt className="text-muted-foreground">Right to work</dt><dd>{answers["right_to_work"] || "—"}</dd></div></dl></div>
+            <dl className="mt-3 grid gap-3 text-sm md:grid-cols-2"><div><dt className="text-muted-foreground">Notice period</dt><dd>{answers["notice_period"] || "—"}</dd></div><div><dt className="text-muted-foreground">Right to work</dt><dd>{answers["right_to_work"] || "—"}</dd></div>{answers["how_heard"] && <div><dt className="text-muted-foreground">Heard about the role</dt><dd>{answers["how_heard"]}</dd></div>}</dl></div>
         </div>
         <aside><h2 className="font-semibold">Timeline</h2>
           <ol className="mt-4 space-y-4 border-l border-border pl-5">{data.events.map((e) => (
