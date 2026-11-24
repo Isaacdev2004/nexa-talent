@@ -1,6 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { messageEmail } from "@/lib/brand-email";
 import { nexaLogoAttachment } from "@/lib/email-logo";
+import { sharedOpportunityEmail } from "@/lib/opportunity-email";
+import { PUBLIC_SITE_URL } from "@/lib/public-site";
 
 const STATUS_NOTICE: Record<string, { subject: string; phrase: string }> = {
   under_review: { subject: "Your application is under review", phrase: "is under review" },
@@ -62,6 +64,71 @@ async function deliverQueued() {
   }
   return { sent, failed, waiting: false };
 }
+
+function publicSite() {
+  const configured = (process.env["SITE_URL"] ?? "").replace(/\/$/, "");
+  if (configured && !/localhost|127\.0\.0\.1/i.test(configured)) return configured;
+  return PUBLIC_SITE_URL;
+}
+
+async function sendBranded(to: string, subject: string, body: string, href: string, actionLabel: string) {
+  const key = process.env["RESEND_API_KEY"];
+  const from = process.env["EMAIL_FROM"];
+  if (!key || !from) return { sent: 0, failed: 0, waiting: true as const };
+  const logo = nexaLogoAttachment();
+  const message = messageEmail(subject, body, href, Boolean(logo), actionLabel);
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      from,
+      to: [to],
+      subject,
+      text: message.text,
+      html: message.html,
+      ...(logo ? { attachments: [logo] } : {}),
+    }),
+  });
+  if (!response.ok) return { sent: 0, failed: 1, waiting: false as const };
+  return { sent: 1, failed: 0, waiting: false as const };
+}
+
+export const emailSharedOpportunity = createServerFn({ method: "POST" })
+  .inputValidator((d: { opportunityId?: string }) => {
+    const opportunityId = String(d?.opportunityId ?? "").trim();
+    if (!/^[0-9a-f-]{36}$/i.test(opportunityId)) throw new Error("Opportunity not found");
+    return { opportunityId };
+  })
+  .handler(async ({ data }) => {
+    const { requestUser } = await import("@/lib/request-user.server");
+    const { supabase, user } = await requestUser();
+    const { data: staff } = await supabase.rpc("is_staff", { _user_id: user.id });
+    if (!staff) throw new Error("Recruitment team access required");
+    const { data: opportunity, error } = await supabase
+      .from("candidate_opportunities")
+      .select("candidate_email, staff_note, job_id")
+      .eq("id", data.opportunityId)
+      .maybeSingle();
+    if (error || !opportunity) throw new Error("Opportunity not found");
+    const { data: job } = await supabase.from("jobs").select("title, employer_display_name").eq("id", opportunity.job_id).maybeSingle();
+    const notice = sharedOpportunityEmail({
+      title: job?.title ?? "",
+      employer: job?.employer_display_name ?? "",
+      email: opportunity.candidate_email,
+      note: opportunity.staff_note,
+    });
+    const result = await sendBranded(opportunity.candidate_email, notice.subject, notice.body, `${publicSite()}/opportunities`, "View this opportunity");
+    if (result.sent) {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      await supabaseAdmin
+        .from("email_outbox")
+        .update({ status: "sent", sent_at: new Date().toISOString(), error: null })
+        .eq("to_email", opportunity.candidate_email)
+        .eq("link", "/opportunities")
+        .eq("status", "queued");
+    }
+    return result;
+  });
 
 export const flushEmailOutbox = createServerFn({ method: "POST" }).handler(async () => {
   const { requestUser } = await import("@/lib/request-user.server");

@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
+import { emailSharedOpportunity } from "@/lib/email.functions";
 import { OPPORTUNITY_LABELS } from "@/lib/opportunities";
 
 export const Route = createFileRoute("/_authenticated/staff/opportunities")({ component: Opportunities });
@@ -25,10 +26,17 @@ function Opportunities() {
 
   const share = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("candidate_opportunities").insert({ job_id: f.job_id, candidate_email: f.email.trim().toLowerCase(), shared_description: f.description, staff_note: f.note || null, shared_by: user!.id });
-      if (error) throw error;
+      const inserted = await supabase.from("candidate_opportunities").insert({ job_id: f.job_id, candidate_email: f.email.trim().toLowerCase(), shared_description: f.description, staff_note: f.note || null, shared_by: user!.id }).select("id").single();
+      if (inserted.error || !inserted.data) throw inserted.error ?? new Error("Couldn't share");
+      return emailSharedOpportunity({ data: { opportunityId: inserted.data.id } });
     },
-    onSuccess: () => { setF({ job_id: "", email: "", description: "", note: "" }); qc.invalidateQueries({ queryKey: ["staff-opps"] }); toast.success("Shared — the candidate sees it when they sign in with that email"); },
+    onSuccess: (mail) => {
+      setF({ job_id: "", email: "", description: "", note: "" });
+      qc.invalidateQueries({ queryKey: ["staff-opps"] });
+      if (mail.waiting) toast.success("Shared on their dashboard. Email sends once the sender is configured.");
+      else if (mail.failed) toast.error("Shared on their dashboard, but the email could not be sent");
+      else toast.success("Shared. They've been emailed as well.");
+    },
     onError: (e: Error) => toast.error(e.message.includes("duplicate") ? "This role was already shared with that email" : "Couldn't share"),
   });
   const sendLink = useMutation({

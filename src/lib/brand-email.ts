@@ -48,9 +48,9 @@ export function brandEmailHtml(mail: BrandEmail) {
 </html>`;
 }
 
-export function messageEmail(subject: string, body: string, href?: string, showLogo = true) {
+export function messageEmail(subject: string, body: string, href?: string, showLogo = true, actionLabel?: string) {
   const paragraphs = body.split(/\n+/).map((line) => line.trim()).filter(Boolean);
-  const action = href ? { href, label: href.includes("/applications/") ? "View your application" : "Open NexaTalent" } : undefined;
+  const action = href ? { href, label: actionLabel ?? (href.includes("/applications/") ? "View your application" : "Open NexaTalent") } : undefined;
   return {
     text: [body.trim(), href ?? ""].filter(Boolean).join("\n\n"),
     html: brandEmailHtml({ headline: subject, paragraphs, action, showLogo }),
